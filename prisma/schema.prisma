@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id          Int      @id @default(autoincrement())
+  name        String
+  bio         String
+  catchphrase String?
+  updatedAt   DateTime @updatedAt
+}
+
+model Resume {
+  id           Int       @id @default(autoincrement())
+  type         String    // "work" | "education"
+  title        String
+  organization String
+  startDate    DateTime
+  endDate      DateTime?
+  description  String?
+  createdAt    DateTime  @default(now())
+}
+
+model Skill {
+  id       Int    @id @default(autoincrement())
+  name     String
+  category String
+  level    Int
+}
+
+model Conversation {
+  id        Int      @id @default(autoincrement())
+  sessionId String
+  role      String
+  message   String
+  mode      String
+  createdAt DateTime @default(now())
+}
+
+model Booking {
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String
+  startTime     DateTime
+  endTime       DateTime
+  googleEventId String?
+  createdAt     DateTime @default(now())
+}
+
+model AvailableHours {
+  id        Int     @id @default(autoincrement())
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  isActive  Boolean @default(true)
+}
