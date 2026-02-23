@@ -197,6 +197,44 @@ export async function POST(req: NextRequest) {
     }
     console.log('Resolved userMessage source:', userMessageSource)
 
+    // If extraction didn't find a user message, try once more by scanning
+    // the artifact arrays for the last user content (robust fallback).
+    if (!userMessage) {
+      try {
+        const formatted = payload?.message?.artifact?.messagesOpenAIFormatted
+        if (Array.isArray(formatted) && formatted.length > 0) {
+          for (let i = formatted.length - 1; i >= 0; i--) {
+            const itm = formatted[i]
+            if (itm?.role === 'user' && itm?.content) {
+              userMessage = String(itm.content)
+              userMessageSource = 'artifact.messagesOpenAIFormatted-fallback'
+              break
+            }
+          }
+        }
+        if (!userMessage) {
+          const msgs = payload?.message?.artifact?.messages
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              const itm = msgs[i]
+              if (itm?.role === 'user') {
+                const body = itm?.message
+                if (typeof body === 'string') userMessage = body
+                else if (body && typeof body === 'object') userMessage = body.message || body.text || ''
+                if (userMessage) {
+                  userMessageSource = 'artifact.messages-fallback'
+                  break
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Fallback extraction from artifact failed', e)
+      }
+      console.log('Resolved userMessage (after artifact fallback) source:', userMessageSource)
+    }
+
     // Short-circuit for non-final webhook events: avoid MCP/Groq on partial updates.
     const msgType = payload?.message?.type || ''
     const msgStatus = payload?.message?.status || ''
