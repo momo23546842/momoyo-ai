@@ -235,74 +235,13 @@ export async function POST(req: NextRequest) {
       console.log('Resolved userMessage (after artifact fallback) source:', userMessageSource)
     }
 
-    // Short-circuit for non-final webhook events: avoid MCP/Groq on partial updates.
-    const msgType = payload?.message?.type || ''
-    const msgStatus = payload?.message?.status || ''
-    // Only proceed to call MCP and the LLM when this is a final user speech
-    // event and the extracted user message is non-empty. This prevents
-    // assistant->assistant loops and empty-prompt generations.
-    const messageRole = payload?.message?.role || ''
+    // Prefer artifact-derived user message; if none exists, skip MCP/Groq entirely.
     const trimmedUserMessage = String(userMessage || '').trim()
-
-    // Scan artifact arrays to determine if there's an embedded user prompt.
-    // Prefer messagesOpenAIFormatted, then artifact.messages.
-    let artifactUserPrompt = ''
-    try {
-      const formatted = payload?.message?.artifact?.messagesOpenAIFormatted
-      if (Array.isArray(formatted) && formatted.length > 0) {
-        for (let i = formatted.length - 1; i >= 0; i--) {
-          const itm = formatted[i]
-          if (itm?.role === 'user' && itm?.content) {
-            artifactUserPrompt = String(itm.content)
-            break
-          }
-        }
-      }
-      if (!artifactUserPrompt) {
-        const msgs = payload?.message?.artifact?.messages
-        if (Array.isArray(msgs) && msgs.length > 0) {
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            const itm = msgs[i]
-            if (itm?.role === 'user') {
-              const body = itm?.message
-              if (typeof body === 'string') artifactUserPrompt = body
-              else if (body && typeof body === 'object') artifactUserPrompt = body.message || body.text || ''
-              if (artifactUserPrompt) break
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Error while extracting user prompt from artifact', e)
-    }
-
-    const hasUserPrompt = Boolean(trimmedUserMessage || (artifactUserPrompt && String(artifactUserPrompt).trim()))
-
-    // Early guard: if top-level role is assistant and there's no user prompt,
-    // short-circuit immediately to avoid assistant->assistant loops.
-    if (messageRole === 'assistant' && !hasUserPrompt) {
-      console.log('Short-circuit: payload role=assistant and no user prompt found; skipping MCP/Groq (type:', msgType, 'status:', msgStatus, ')')
+    console.log('User message detected:', userMessage)
+    if (!trimmedUserMessage) {
+      console.log('No user message found in artifact or payload; skipping MCP/Groq and returning empty content')
       const empty = ''
       return NextResponse.json({ response: { message: { role: 'assistant', content: empty } }, messageResponse: { message: { role: 'assistant', content: empty } } })
-    }
-
-    // Allow processing for either speech-update or conversation-update when
-    // a user prompt exists (from top-level or artifact). If no prompt, return
-    // empty content without calling MCP/Groq.
-    const allowedTypes = ['speech-update', 'conversation-update']
-    if (!allowedTypes.includes(msgType) || !hasUserPrompt) {
-      console.log('Skipping MCP/Groq: reason:', { type: msgType, status: msgStatus, role: messageRole, hasUserPrompt })
-      const empty = ''
-      return NextResponse.json({ response: { message: { role: 'assistant', content: empty } }, messageResponse: { message: { role: 'assistant', content: empty } } })
-    }
-
-    // If artifact had the user prompt but our earlier `userMessage` was empty,
-    // populate `userMessage` now from artifactUserPrompt so downstream logic
-    // uses the intended prompt.
-    if (!trimmedUserMessage && artifactUserPrompt) {
-      userMessage = String(artifactUserPrompt)
-      userMessageSource = 'artifactUserPrompt-populated'
-      console.log('Populated userMessage from artifactUserPrompt')
     }
 
     // MCP helper: call the local MCP JSON-RPC /api/mcp endpoint
