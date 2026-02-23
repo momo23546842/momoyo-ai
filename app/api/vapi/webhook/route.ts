@@ -4,7 +4,7 @@ import Groq from 'groq-sdk'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
 
 // Call Groq with a structured DB_CONTEXT provided as a system message.
-async function callGroqWithContext(prompt: string, dbContext: any) {
+async function callGroqWithContext(prompt: string, dbContext: any, language = 'en') {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) throw new Error('GROQ_API_KEY not set')
 
@@ -12,9 +12,13 @@ async function callGroqWithContext(prompt: string, dbContext: any) {
   console.log('Using Groq model:', model)
 
   const groq = new Groq({ apiKey })
-  const systemContent = `You are Momoyo Kataoka's digital twin. Answer using ONLY DB_CONTEXT. If missing, say 'I cannot find this information in the database.'\nDB_CONTEXT:${JSON.stringify(
-    dbContext
-  )}`
+  // Strong system prompt derived from AGENT.md: speak as Momoyo, follow privacy rules,
+  // answer only from DB_CONTEXT, and respond in the visitor's language.
+  const personaInstructions = `You are Momoyo Kataoka's digital twin. Speak as Momoyo — warm, professional, and enthusiastic. Use the visitor's language (Japanese or English) consistently. Answer using ONLY the provided DB_CONTEXT. Do NOT invent or assume facts not present in DB_CONTEXT. Never reveal private information such as personal address, phone number, personal email, salary, bank details, passwords, or family information. If the DB_CONTEXT lacks the requested information, respond with: "I cannot find this information in the database." Offer to direct the visitor to the contact form or to book a meeting when appropriate. For booking flows, call the server booking tools (checkAvailability/createBooking) instead of providing private scheduling details.`
+
+  const langInstruction = language === 'ja' ? '\nRespond in Japanese.' : '\nRespond in English.'
+
+  const systemContent = `${personaInstructions}${langInstruction}\nDB_CONTEXT:${JSON.stringify(dbContext)}`
 
   try {
     const response = await groq.chat.completions.create({
@@ -213,8 +217,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: 'I cannot find this information in the database.' } } })
     }
 
+    // Test-only: allow forcing deterministic fallback via header, but only
+    // in non-production or when ALLOW_TEST_HEADERS=true. In production the
+    // header is ignored for safety.
+    const allowTestHeaders = process.env.NODE_ENV !== 'production' || process.env.ALLOW_TEST_HEADERS === 'true'
+    const forceLlmFail = allowTestHeaders && req.headers.get('x-force-llm-fail') === '1'
+    if (forceLlmFail) {
+      console.warn('x-force-llm-fail header present (test mode) — skipping LLM and returning deterministic fallback')
+      const forced = deterministicReplyFromContext(trimmedContext)
+      console.log('Sending deterministic fallback (forced) to Vapi')
+      return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: forced } } })
+    }
+
     // Call LLM with strict DB_CONTEXT, but timeout after 15s and return deterministic fallback
     let replyText: string
+
+    // Simple language detection: if text contains Japanese characters, prefer Japanese.
+    function detectLanguageFromText(t: string) {
+      try {
+        if (!t) return 'en'
+        return /[\u3040-\u30ff\u4e00-\u9faf]/.test(t) ? 'ja' : 'en'
+      } catch (e) {
+        return 'en'
+      }
+    }
 
     function deterministicReplyFromContext(dbContext: any) {
       try {
@@ -261,7 +287,8 @@ export async function POST(req: NextRequest) {
         }, timeoutMs)
       })
 
-      const groqPromise = callGroqWithContext(String(userMessage || ''), trimmedContext)
+      const language = detectLanguageFromText(String(userMessage || ''))
+      const groqPromise = callGroqWithContext(String(userMessage || ''), trimmedContext, language)
 
       replyText = await Promise.race([groqPromise, timeoutPromise])
 
@@ -270,6 +297,28 @@ export async function POST(req: NextRequest) {
 
       console.log('Groq response:', replyText)
       console.log('Groq reply:', replyText?.slice(0, 200))
+      // If the LLM returns a clarification request instead of an answer,
+      // prefer the deterministic DB-based fallback so Vapi always responds.
+      try {
+        const lower = String(replyText || '').toLowerCase()
+        const clarificationPatterns = [
+          'need more information',
+          'what would you like to know',
+          'what would you like to know about',
+          'can you tell',
+          'could you tell',
+          'please provide',
+          'i need more',
+          'could you provide',
+          'please clarify'
+        ]
+        if (clarificationPatterns.some((p) => lower.includes(p))) {
+          console.warn('Groq returned a clarification request; using deterministic fallback instead')
+          replyText = deterministicReplyFromContext(trimmedContext)
+        }
+      } catch (e) {
+        console.warn('Error while evaluating Groq reply for clarification; continuing with original reply', e)
+      }
     } catch (e: any) {
       console.error('Groq call failed in webhook', e)
       // Fallback deterministic reply if Groq errors
