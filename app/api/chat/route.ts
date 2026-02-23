@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch data from the database to provide context
     const profile = await prisma?.profile?.findFirst?.() ?? null
-    const career = await prisma?.career?.findMany?.({ orderBy: { startDate: 'desc' } }) ?? []
+    const resumes = await prisma?.resume?.findMany?.({ orderBy: { startDate: 'desc' } }) ?? []
     const skills = await prisma?.skill?.findMany?.() ?? []
 
     // Build a structured system prompt from DB data
@@ -41,10 +41,10 @@ export async function POST(req: NextRequest) {
       if (profile.bio) parts.push(`Bio: ${profile.bio}`)
       if (profile.location) parts.push(`Location: ${profile.location}`)
     }
-    if (career.length) {
-      const jobs = career
+    if (resumes.length) {
+      const jobs = resumes
         .slice(0, 10)
-        .map((c: any) => `${c.role ?? ''} at ${c.company ?? ''} (${c.startDate ?? ''} - ${c.endDate ?? 'present'})`)
+        .map((r: any) => `${r.title ?? ''} at ${r.organization ?? ''} (${r.startDate ?? ''} - ${r.endDate ?? 'present'})`)
         .join('; ')
       parts.push(`Career: ${jobs}`)
     }
