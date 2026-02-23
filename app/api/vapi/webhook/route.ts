@@ -214,7 +214,11 @@ export async function POST(req: NextRequest) {
 
     // If there's no data, respond with the standardized missing-info message
     if (!DB_CONTEXT.profile && (!DB_CONTEXT.career || DB_CONTEXT.career.length === 0) && (!DB_CONTEXT.skills || DB_CONTEXT.skills.length === 0)) {
-      return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: 'I cannot find this information in the database.' } } })
+      const content = 'I cannot find this information in the database.'
+      return NextResponse.json({
+        response: { message: { role: 'assistant', content } },
+        messageResponse: { message: { role: 'assistant', content } },
+      })
     }
 
     // Test-only: allow forcing deterministic fallback via header, but only
@@ -226,7 +230,10 @@ export async function POST(req: NextRequest) {
       console.warn('x-force-llm-fail header present (test mode) — skipping LLM and returning deterministic fallback')
       const forced = deterministicReplyFromContext(trimmedContext)
       console.log('Sending deterministic fallback (forced) to Vapi')
-      return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: forced } } })
+      return NextResponse.json({
+        response: { message: { role: 'assistant', content: forced } },
+        messageResponse: { message: { role: 'assistant', content: forced } },
+      })
     }
 
     // Call LLM with strict DB_CONTEXT, but timeout after 15s and return deterministic fallback
@@ -326,7 +333,10 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('Sending response to Vapi')
-    return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: replyText } } })
+    return NextResponse.json({
+      response: { message: { role: 'assistant', content: replyText } },
+      messageResponse: { message: { role: 'assistant', content: replyText } },
+    })
   } catch (err) {
     console.error('Vapi webhook error', err)
     return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: "I'm sorry, I couldn't retrieve that information." } } }, { status: 500 })
