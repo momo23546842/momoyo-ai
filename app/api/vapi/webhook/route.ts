@@ -81,33 +81,54 @@ export async function POST(req: NextRequest) {
         }
 
         const data = await res.json()
-        const text = data?.result?.content?.[0]?.text
-        if (!text) {
-          console.error(`MCP tool error: ${toolName} (no content)`)
-          return null
-        }
-
-        // Attempt to parse JSON result; fall back to raw text
-        try {
-          const parsed = JSON.parse(text)
-          console.log(`MCP tool success: ${toolName}`)
-          return parsed
-        } catch (e) {
-          console.log(`MCP tool success (raw): ${toolName}`)
-          return text
-        }
+        return data
       } catch (e) {
         console.error(`MCP tool error: ${toolName}`, e)
         return null
       }
     }
 
-    // Call MCP tools for profile, career, skills
-    const profile = await callMcpTool('getProfile', userId)
-    const career = await callMcpTool('getCareer', userId)
-    const skills = await callMcpTool('getSkills', userId)
+    // Helper to parse MCP tool result into JSON when possible
+    function parseMcpResult(result: any) {
+      try {
+        if (result?.result?.content?.[0]?.text) {
+          return JSON.parse(result.result.content[0].text)
+        }
+        return null
+      } catch (e) {
+        try {
+          console.log('MCP parse failed, raw:', JSON.stringify(result).slice(0, 500))
+        } catch (ee) {
+          console.log('MCP parse failed, raw: <unserializable>')
+        }
+        return null
+      }
+    }
 
-    const DB_CONTEXT = { profile: profile ?? null, career: career ?? [], skills: skills ?? [] }
+    // Call MCP tools for profile, career, skills and parse results
+    const rawProfile = await callMcpTool('getProfile', userId)
+    const parsedProfile = parseMcpResult(rawProfile)
+    if (parsedProfile) console.log('MCP tool success: getProfile')
+    else console.error('MCP tool error: getProfile')
+
+    const rawCareer = await callMcpTool('getCareer', userId)
+    const parsedCareer = parseMcpResult(rawCareer)
+    if (parsedCareer) console.log('MCP tool success: getCareer')
+    else console.error('MCP tool error: getCareer')
+
+    const rawSkills = await callMcpTool('getSkills', userId)
+    const parsedSkills = parseMcpResult(rawSkills)
+    if (parsedSkills) console.log('MCP tool success: getSkills')
+    else console.error('MCP tool error: getSkills')
+
+    const DB_CONTEXT = { profile: parsedProfile ?? null, career: parsedCareer ?? [], skills: parsedSkills ?? [] }
+
+    // Log DB_CONTEXT truncated before calling Groq
+    try {
+      console.log('DB_CONTEXT:', JSON.stringify(DB_CONTEXT).slice(0, 2000))
+    } catch (e) {
+      console.log('DB_CONTEXT: <unserializable>')
+    }
 
     // If there's no data, respond with the standardized missing-info message
     if (!DB_CONTEXT.profile && (!DB_CONTEXT.career || DB_CONTEXT.career.length === 0) && (!DB_CONTEXT.skills || DB_CONTEXT.skills.length === 0)) {
