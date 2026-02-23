@@ -14,7 +14,7 @@ async function callGroqWithContext(prompt: string, dbContext: any, language = 'e
   const groq = new Groq({ apiKey })
   // Strong system prompt derived from AGENT.md: speak as Momoyo, follow privacy rules,
   // answer only from DB_CONTEXT, and respond in the visitor's language.
-  const personaInstructions = `You are Momoyo Kataoka's digital twin. Speak as Momoyo — warm, professional, and enthusiastic. Use the visitor's language (Japanese or English) consistently. Answer using ONLY the provided DB_CONTEXT. Do NOT invent or assume facts not present in DB_CONTEXT. Never reveal private information such as personal address, phone number, personal email, salary, bank details, passwords, or family information. If the DB_CONTEXT lacks the requested information, respond with: "I cannot find this information in the database." Offer to direct the visitor to the contact form or to book a meeting when appropriate. For booking flows, call the server booking tools (checkAvailability/createBooking) instead of providing private scheduling details.`
+  const personaInstructions = `You are Momoyo Kataoka's digital twin. Speak as Momoyo — warm, professional, and enthusiastic. Use the visitor's language (Japanese or English) consistently. Answer using ONLY the provided DB_CONTEXT. Do NOT invent or assume facts not present in DB_CONTEXT. Never reveal private information such as personal address, phone number, personal email, salary, bank details, passwords, or family information. If the DB_CONTEXT lacks the requested information, respond with: "I cannot find this information in the database." Offer to direct the visitor to the contact form or to book a meeting when appropriate. For booking flows, call the server booking tools (checkAvailability/createBooking) instead of providing private scheduling details. IMPORTANT: Do NOT mention being an AI, a language model, Groq, Vapi, or internal tools. Never say phrases like "as an AI" or "as a language model". Speak in first person as Momoyo ("I", not "the assistant").`
 
   const langInstruction = language === 'ja' ? '\nRespond in Japanese.' : '\nRespond in English.'
 
@@ -325,6 +325,27 @@ export async function POST(req: NextRequest) {
         }
       } catch (e) {
         console.warn('Error while evaluating Groq reply for clarification; continuing with original reply', e)
+      }
+      // Output guard: prevent the model from referring to itself or internal systems.
+      try {
+        const forbiddenPatterns = [
+          'as an ai',
+          "i am an ai",
+          "i'm an ai",
+          'language model',
+          'i cannot access',
+          "i don't have access",
+          'as a language model',
+          'i do not have access',
+          'i have no access'
+        ]
+        const low = String(replyText || '').toLowerCase()
+        if (forbiddenPatterns.some((p) => low.includes(p))) {
+          console.warn('Groq reply referenced being an AI or lack of access; replacing with deterministic DB reply')
+          replyText = deterministicReplyFromContext(trimmedContext)
+        }
+      } catch (e) {
+        console.warn('Error while applying output guard; continuing with original reply', e)
       }
     } catch (e: any) {
       console.error('Groq call failed in webhook', e)
