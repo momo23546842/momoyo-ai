@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
+const MISSING_INFO_EXACT = 'I cannot find this information in the database.'
 
 // Deterministic short reply builder (copied from webhook logic)
 function buildShortDeterministicReply(dbContext: any) {
@@ -288,7 +289,11 @@ export async function POST(req: NextRequest) {
     const out = { id: `chatcmpl_${now}`, object: 'chat.completion', created: now, model, choices: [{ index: 0, message: { role: 'assistant', content: replyText }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }
     return NextResponse.json(out)
   } catch (err) {
-    console.error('/api/llm error', err)
-    return NextResponse.json({ id: `chatcmpl_${Math.floor(Date.now()/1000)}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'custom', choices: [{ index: 0, message: { role: 'assistant', content: "I'm sorry, I couldn't retrieve that information." }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }, { status: 500 })
+    console.error('/api/llm unexpected error', err)
+    // On unexpected errors return a valid OpenAI-compatible completion
+    // with the standardized missing-info sentence so callers (like Vapi)
+    // receive a usable response rather than a 5xx error.
+    const now = Math.floor(Date.now() / 1000)
+    return NextResponse.json({ id: `chatcmpl_${now}`, object: 'chat.completion', created: now, model: 'custom', choices: [{ index: 0, message: { role: 'assistant', content: MISSING_INFO_EXACT }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } })
   }
 }
