@@ -1,6 +1,25 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Centralized tools metadata (used by GET handshake, initialize, and tools/list)
+const toolsList = [
+  {
+    name: 'getProfile',
+    description: "Returns Momoyo Kataoka's profile and bio information. Call this when asked about who she is.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'getCareer',
+    description: "Returns Momoyo Kataoka's career / resume entries. Call this when asked about work history or positions.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'getSkills',
+    description: "Returns Momoyo Kataoka's skills and proficiency levels. Call this when asked about skills or expertise.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+]
+
 export const runtime = 'nodejs'
 
 // GET: simple handshake for tooling / browser checks
@@ -8,11 +27,7 @@ export async function GET() {
   const handshake = {
     name: 'momoyo-ai-mcp',
     version: '1.0.0',
-    tools: [
-      { name: 'getProfile', description: 'Returns the profile information from database' },
-      { name: 'getCareer', description: 'Returns resume / career entries' },
-      { name: 'getSkills', description: 'Returns skill list' },
-    ],
+    tools: toolsList,
   }
   return NextResponse.json(handshake)
 }
@@ -60,24 +75,15 @@ export async function POST(req: Request) {
       const handshake = {
         name: 'momoyo-ai-mcp',
         version: '1.0.0',
-        tools: [
-          { name: 'getProfile', description: 'Returns the profile information from database' },
-          { name: 'getCareer', description: 'Returns resume / career entries' },
-          { name: 'getSkills', description: 'Returns skill list' },
-        ],
+        tools: toolsList,
       }
       console.log('MCP initialize ->', handshake)
       return rpcResponse(handshake)
     }
 
     if (method === 'tools/list') {
-      const tools = [
-        { name: 'getProfile', description: 'Returns the profile information from database' },
-        { name: 'getCareer', description: 'Returns resume / career entries' },
-        { name: 'getSkills', description: 'Returns skill list' },
-      ]
-      console.log('MCP tools/list ->', tools)
-      return rpcResponse({ tools })
+      console.log('MCP tools/list ->', toolsList)
+      return rpcResponse({ tools: toolsList })
     }
 
     if (method === 'tools/call') {
