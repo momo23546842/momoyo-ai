@@ -19,7 +19,7 @@ async function callGroq(message: string, systemPrompt: string) {
     ],
   })
 
-  const reply = response?.choices?.[0]?.message?.content ?? response?.choices?.[0]?.text ?? JSON.stringify(response)
+  const reply = response?.choices?.[0]?.message?.content ?? JSON.stringify(response)
   return String(reply)
 }
 
