@@ -110,3 +110,24 @@ RESEND_API_KEY=
 - **Booking** — ミーティング予約
 - **Contact** — 連絡先
 
+## トラブルシューティング記録
+
+### Prisma 7 + Next.js の初期化エラー
+**エラー内容**
+- `PrismaClientInitializationError`: PrismaClient の初期化失敗
+- `No HTTP methods exported in route.ts`: APIルートが認識されない
+
+**原因**
+- Prisma 7 では空のコンストラクタや `datasourceUrl` だけでは初期化できない
+- 初期化エラーがモジュール評価時に発生し、Next.js がルートのエクスポートを検出できなかった
+
+**解決方法**
+- `@prisma/adapter-neon` と `@neondatabase/serverless` + `ws` を使って PrismaClient を初期化
+- `route.ts` の prisma import を動的 import に変更（`const { prisma } = await import('@/lib/prisma')`）
+- `seed.ts` も同様にNeonアダプタを使う形に修正
+
+**インストールしたパッケージ**
+```bash
+npm install @prisma/adapter-neon @neondatabase/serverless ws
+npm install -D @types/ws
+```
