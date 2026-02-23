@@ -213,16 +213,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: 'I cannot find this information in the database.' } } })
     }
 
-    // Call LLM with strict DB_CONTEXT
+    // Call LLM with strict DB_CONTEXT, but timeout after 15s and return deterministic fallback
     let replyText: string
+
+    function deterministicReplyFromContext(dbContext: any) {
+      try {
+        const profile = dbContext?.profile ?? {}
+        const career = Array.isArray(dbContext?.career) ? dbContext.career : []
+
+        const workItems = career.filter((c: any) => (c?.type || '').toLowerCase() !== 'education')
+        const topWork = workItems.slice(0, 3)
+        const educationItem = career.find((c: any) => (c?.type || '').toLowerCase() === 'education') || career[0] || null
+
+        const parts: string[] = []
+        if (profile?.name) parts.push(String(profile.name))
+        if (profile?.catchphrase) parts.push(String(profile.catchphrase))
+        if (profile?.bio) parts.push(String(profile.bio))
+
+        if (topWork.length > 0) {
+          parts.push('Top roles:')
+          for (const item of topWork) {
+            const title = item?.title || item?.position || item?.role || ''
+            const org = item?.company || item?.organization || ''
+            parts.push(`${title}${org ? ' at ' + org : ''}`.trim())
+          }
+        }
+
+        if (educationItem) {
+          const edu = educationItem?.title || educationItem?.degree || educationItem?.school || ''
+          if (edu) parts.push(`Education: ${edu}`)
+        }
+
+        return parts.join('\n') || 'I cannot find this information in the database.'
+      } catch (e) {
+        console.error('Error building deterministic fallback', e)
+        return 'I cannot find this information in the database.'
+      }
+    }
+
     try {
-      replyText = await callGroqWithContext(String(userMessage || ''), trimmedContext)
+      let timedOut = false
+      const timeoutMs = 15000
+      const timeoutPromise = new Promise<string>((resolve) => {
+        setTimeout(() => {
+          timedOut = true
+          console.warn(`Groq call timed out after ${timeoutMs}ms; using deterministic fallback`)
+          resolve(deterministicReplyFromContext(trimmedContext))
+        }, timeoutMs)
+      })
+
+      const groqPromise = callGroqWithContext(String(userMessage || ''), trimmedContext)
+
+      replyText = await Promise.race([groqPromise, timeoutPromise])
+
       console.log('Groq response:', replyText)
       console.log('Groq reply:', replyText?.slice(0, 200))
+      if (timedOut) console.log('Returned deterministic fallback due to timeout')
     } catch (e: any) {
       console.error('Groq call failed in webhook', e)
-      // If non-rate-limit error propagated, fall back to deterministic message
-      return NextResponse.json({ messageResponse: { message: { role: 'assistant', content: 'I cannot find this information in the database.' } } })
+      // Fallback deterministic reply if Groq errors
+      replyText = deterministicReplyFromContext(trimmedContext)
     }
 
     console.log('Sending response to Vapi')
