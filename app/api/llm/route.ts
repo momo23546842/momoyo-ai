@@ -117,6 +117,7 @@ async function callGroqWithContext(prompt: string, dbContext: any, language = 'e
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    console.log('FULL LLM REQUEST BODY:', JSON.stringify(body, null, 2))
 
     // Parse incoming OpenAI-style fields
     const model = body?.model || 'custom'
@@ -135,10 +136,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If no user message, return minimal completion
+    // If no user message, return a friendly default greeting so Vapi can speak
     if (!userMessage) {
-      console.log('No user message in OpenAI-style request; returning minimal completion')
-      const reply = 'Hello.'
+      const reply = "Hello! I'm Momoyo's AI assistant. How can I help you?"
       const now = Math.floor(Date.now() / 1000)
       return NextResponse.json({ id: `chatcmpl_${now}`, object: 'chat.completion', created: now, model, choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } })
     }
