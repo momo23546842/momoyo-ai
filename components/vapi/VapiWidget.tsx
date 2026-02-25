@@ -11,7 +11,9 @@ export default function VapiWidget() {
   const [isSpeaking, setIsSpeaking] = useState(false)
 
   const startCall = async () => {
-    await vapi.start(process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!)
+    await vapi.start({
+      assistantId: process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!,
+    })
     setIsConnected(true)
   }
 
