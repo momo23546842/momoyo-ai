@@ -1,27 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { google } from 'googleapis'
 
 const WORK_START = 9
 const WORK_END = 18
-
-function getServiceAccountAuth() {
-  const rawKey = process.env.GOOGLE_PRIVATE_KEY
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-
-  if (!rawKey || !clientEmail) {
-    throw new Error(`Missing credentials: email=${!!clientEmail}, key=${!!rawKey}`)
-  }
-
-  // Handle different formats of the private key from env vars
-  const privateKey = rawKey.replace(/\\n/g, '\n')
-
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ['https://www.googleapis.com/auth/calendar'],
-  })
-  return auth
-}
 
 function getSydneyOffset(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z')
@@ -33,7 +13,7 @@ function getSydneyOffset(dateStr: string): string {
 function generateSlots(
   dateStr: string,
   offset: string,
-  busyTimes: { start: string | null | undefined; end: string | null | undefined }[]
+  busyTimes: { start: string; end: string }[]
 ) {
   const slots = []
   for (let hour = WORK_START; hour < WORK_END; hour++) {
@@ -41,7 +21,6 @@ function generateSlots(
     const slotEnd = new Date(`${dateStr}T${String(hour + 1).padStart(2, '0')}:00:00${offset}`)
 
     const isBusy = busyTimes.some(busy => {
-      if (!busy.start || !busy.end) return false
       const busyStart = new Date(busy.start)
       const busyEnd = new Date(busy.end)
       return slotStart < busyEnd && slotEnd > busyStart
@@ -57,71 +36,110 @@ function generateSlots(
   return slots
 }
 
+async function getAccessToken(): Promise<string> {
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY
+
+  if (!clientEmail || !rawKey) {
+    throw new Error(`Missing env: email=${!!clientEmail}, key=${!!rawKey}`)
+  }
+
+  const privateKey = rawKey.replace(/\\n/g, '\n')
+
+  // Build JWT manually
+  const header = { alg: 'RS256', typ: 'JWT' }
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/calendar',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  }
+
+  const encode = (obj: any) =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url')
+
+  const headerB64 = encode(header)
+  const payloadB64 = encode(payload)
+  const signInput = `${headerB64}.${payloadB64}`
+
+  // Sign with Node.js crypto
+  const crypto = await import('crypto')
+  const sign = crypto.createSign('RSA-SHA256')
+  sign.update(signInput)
+  const signature = sign.sign(privateKey, 'base64url')
+
+  const jwt = `${signInput}.${signature}`
+
+  // Exchange JWT for access token
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  })
+
+  if (!tokenRes.ok) {
+    const errText = await tokenRes.text()
+    throw new Error(`Token exchange failed: ${tokenRes.status} ${errText}`)
+  }
+
+  const tokenData = await tokenRes.json()
+  return tokenData.access_token
+}
+
 export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const dateStr = url.searchParams.get('date')
+
+  if (!dateStr) {
+    return NextResponse.json({ error: 'date required' }, { status: 400 })
+  }
+
+  const offset = getSydneyOffset(dateStr)
+  const calendarId = process.env.GOOGLE_CALENDAR_ID
+
+  if (!calendarId) {
+    return NextResponse.json({
+      slots: generateSlots(dateStr, offset, []),
+      warning: 'GOOGLE_CALENDAR_ID not set – showing all slots as available',
+    })
+  }
+
+  // Try to fetch real busy times from Google Calendar
+  let busyTimes: { start: string; end: string }[] = []
+  let warning: string | undefined
+
   try {
-    const url = new URL(req.url)
-    const dateStr = url.searchParams.get('date')
+    const accessToken = await getAccessToken()
 
-    if (!dateStr) {
-      return NextResponse.json({ error: 'date required' }, { status: 400 })
-    }
-
-    const calendarId = process.env.GOOGLE_CALENDAR_ID
-    if (!calendarId) {
-      console.error('GOOGLE_CALENDAR_ID is not set')
-      // Still return slots so the UI works
-      const offset = getSydneyOffset(dateStr)
-      return NextResponse.json({
-        slots: generateSlots(dateStr, offset, []),
-        warning: 'GOOGLE_CALENDAR_ID not configured',
-      })
-    }
-
-    let auth
-    try {
-      auth = getServiceAccountAuth()
-    } catch (authErr: any) {
-      console.error('Auth error:', authErr?.message)
-      const offset = getSydneyOffset(dateStr)
-      return NextResponse.json({
-        slots: generateSlots(dateStr, offset, []),
-        warning: `Auth error: ${authErr?.message}`,
-      })
-    }
-
-    const calendar = google.calendar({ version: 'v3', auth })
-    const offset = getSydneyOffset(dateStr)
     const dayStart = new Date(`${dateStr}T${String(WORK_START).padStart(2, '0')}:00:00${offset}`)
     const dayEnd = new Date(`${dateStr}T${String(WORK_END).padStart(2, '0')}:00:00${offset}`)
 
-    let busyTimes: { start: string | null | undefined; end: string | null | undefined }[] = []
+    const calUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?` +
+      `timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`
 
-    try {
-      const eventsRes = await calendar.events.list({
-        calendarId,
-        timeMin: dayStart.toISOString(),
-        timeMax: dayEnd.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      })
-      busyTimes = (eventsRes.data.items || []).map(event => ({
-        start: event.start?.dateTime,
-        end: event.end?.dateTime,
-      }))
-    } catch (calErr: any) {
-      console.error('Google Calendar API error:', calErr?.message || calErr)
-      return NextResponse.json({
-        slots: generateSlots(dateStr, offset, []),
-        warning: `Calendar API error: ${calErr?.message || 'Unknown'}`,
-      })
+    const calRes = await fetch(calUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!calRes.ok) {
+      const errText = await calRes.text()
+      console.error('Calendar API error:', calRes.status, errText)
+      warning = `Calendar API ${calRes.status}: ${errText.slice(0, 200)}`
+    } else {
+      const calData = await calRes.json()
+      busyTimes = (calData.items || [])
+        .filter((e: any) => e.start?.dateTime && e.end?.dateTime)
+        .map((e: any) => ({ start: e.start.dateTime, end: e.end.dateTime }))
     }
-
-    return NextResponse.json({ slots: generateSlots(dateStr, offset, busyTimes) })
   } catch (err: any) {
-    console.error('Availability error:', err?.message || err)
-    return NextResponse.json(
-      { error: `Server error: ${err?.message || 'Unknown'}`, slots: [] },
-      { status: 500 }
-    )
+    console.error('Availability fetch error:', err?.message || err)
+    warning = `Error: ${err?.message || 'Unknown'}`
   }
+
+  const result: any = { slots: generateSlots(dateStr, offset, busyTimes) }
+  if (warning) result.warning = warning
+
+  return NextResponse.json(result)
 }
