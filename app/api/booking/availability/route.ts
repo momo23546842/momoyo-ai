@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 
-const SYDNEY_TZ = 'Australia/Sydney'
 const WORK_START = 9
 const WORK_END = 18
 
 function getServiceAccountAuth() {
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+
+  if (!rawKey || !clientEmail) {
+    throw new Error(`Missing credentials: email=${!!clientEmail}, key=${!!rawKey}`)
+  }
+
+  // Handle different formats of the private key from env vars
+  const privateKey = rawKey.replace(/\\n/g, '\n')
 
   const auth = new google.auth.JWT({
     email: clientEmail,
@@ -18,68 +24,104 @@ function getServiceAccountAuth() {
 }
 
 function getSydneyOffset(dateStr: string): string {
-  // Determine if the date falls in AEDT (+11) or AEST (+10)
-  // AEDT: first Sunday in October to first Sunday in April
   const d = new Date(dateStr + 'T12:00:00Z')
-  const month = d.getUTCMonth() // 0-indexed
-  // Simple heuristic: Apr-Sep = AEST (+10), Oct-Mar = AEDT (+11)
+  const month = d.getUTCMonth()
   if (month >= 3 && month <= 8) return '+10:00'
   return '+11:00'
+}
+
+function generateSlots(
+  dateStr: string,
+  offset: string,
+  busyTimes: { start: string | null | undefined; end: string | null | undefined }[]
+) {
+  const slots = []
+  for (let hour = WORK_START; hour < WORK_END; hour++) {
+    const slotStart = new Date(`${dateStr}T${String(hour).padStart(2, '0')}:00:00${offset}`)
+    const slotEnd = new Date(`${dateStr}T${String(hour + 1).padStart(2, '0')}:00:00${offset}`)
+
+    const isBusy = busyTimes.some(busy => {
+      if (!busy.start || !busy.end) return false
+      const busyStart = new Date(busy.start)
+      const busyEnd = new Date(busy.end)
+      return slotStart < busyEnd && slotEnd > busyStart
+    })
+
+    slots.push({
+      start: slotStart.toISOString(),
+      end: slotEnd.toISOString(),
+      label: `${String(hour).padStart(2, '0')}:00 - ${String(hour + 1).padStart(2, '0')}:00`,
+      available: !isBusy,
+    })
+  }
+  return slots
 }
 
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
-    const dateStr = url.searchParams.get('date') // YYYY-MM-DD
+    const dateStr = url.searchParams.get('date')
 
     if (!dateStr) {
       return NextResponse.json({ error: 'date required' }, { status: 400 })
     }
 
-    const auth = getServiceAccountAuth()
-    const calendar = google.calendar({ version: 'v3', auth })
+    const calendarId = process.env.GOOGLE_CALENDAR_ID
+    if (!calendarId) {
+      console.error('GOOGLE_CALENDAR_ID is not set')
+      // Still return slots so the UI works
+      const offset = getSydneyOffset(dateStr)
+      return NextResponse.json({
+        slots: generateSlots(dateStr, offset, []),
+        warning: 'GOOGLE_CALENDAR_ID not configured',
+      })
+    }
 
+    let auth
+    try {
+      auth = getServiceAccountAuth()
+    } catch (authErr: any) {
+      console.error('Auth error:', authErr?.message)
+      const offset = getSydneyOffset(dateStr)
+      return NextResponse.json({
+        slots: generateSlots(dateStr, offset, []),
+        warning: `Auth error: ${authErr?.message}`,
+      })
+    }
+
+    const calendar = google.calendar({ version: 'v3', auth })
     const offset = getSydneyOffset(dateStr)
     const dayStart = new Date(`${dateStr}T${String(WORK_START).padStart(2, '0')}:00:00${offset}`)
     const dayEnd = new Date(`${dateStr}T${String(WORK_END).padStart(2, '0')}:00:00${offset}`)
 
-    const eventsRes = await calendar.events.list({
-      calendarId: process.env.GOOGLE_CALENDAR_ID!,
-      timeMin: dayStart.toISOString(),
-      timeMax: dayEnd.toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-    })
+    let busyTimes: { start: string | null | undefined; end: string | null | undefined }[] = []
 
-    const busyTimes = (eventsRes.data.items || []).map(event => ({
-      start: event.start?.dateTime,
-      end: event.end?.dateTime,
-    }))
-
-    // Generate 1-hour slots from 9:00 to 18:00
-    const slots = []
-    for (let hour = WORK_START; hour < WORK_END; hour++) {
-      const slotStart = new Date(`${dateStr}T${String(hour).padStart(2, '0')}:00:00${offset}`)
-      const slotEnd = new Date(`${dateStr}T${String(hour + 1).padStart(2, '0')}:00:00${offset}`)
-
-      const isBusy = busyTimes.some(busy => {
-        if (!busy.start || !busy.end) return false
-        const busyStart = new Date(busy.start)
-        const busyEnd = new Date(busy.end)
-        return slotStart < busyEnd && slotEnd > busyStart
+    try {
+      const eventsRes = await calendar.events.list({
+        calendarId,
+        timeMin: dayStart.toISOString(),
+        timeMax: dayEnd.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
       })
-
-      slots.push({
-        start: slotStart.toISOString(),
-        end: slotEnd.toISOString(),
-        label: `${String(hour).padStart(2, '0')}:00 - ${String(hour + 1).padStart(2, '0')}:00`,
-        available: !isBusy,
+      busyTimes = (eventsRes.data.items || []).map(event => ({
+        start: event.start?.dateTime,
+        end: event.end?.dateTime,
+      }))
+    } catch (calErr: any) {
+      console.error('Google Calendar API error:', calErr?.message || calErr)
+      return NextResponse.json({
+        slots: generateSlots(dateStr, offset, []),
+        warning: `Calendar API error: ${calErr?.message || 'Unknown'}`,
       })
     }
 
-    return NextResponse.json({ slots })
-  } catch (err) {
-    console.error('Availability error:', err)
-    return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 })
+    return NextResponse.json({ slots: generateSlots(dateStr, offset, busyTimes) })
+  } catch (err: any) {
+    console.error('Availability error:', err?.message || err)
+    return NextResponse.json(
+      { error: `Server error: ${err?.message || 'Unknown'}`, slots: [] },
+      { status: 500 }
+    )
   }
 }
