@@ -48,6 +48,7 @@ model Booking {
   startTime     DateTime
   endTime       DateTime
   googleEventId String?
+  meetLink      String?
   createdAt     DateTime @default(now())
 }
 

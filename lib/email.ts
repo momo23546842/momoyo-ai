@@ -51,7 +51,7 @@ function buildCommonHtml(params: BookingEmailParams) {
       <p><strong>Guest:</strong> ${escapeHtml(guestName)} &lt;${escapeHtml(guestEmail)}&gt;</p>
       <p><strong>Start:</strong> ${start} (${params.timezone ?? 'Australia/Sydney'})</p>
       <p><strong>End:</strong> ${end} (${params.timezone ?? 'Australia/Sydney'})</p>
-      ${meetingLink ? `<p><strong>Meeting link:</strong> <a href="${escapeHtml(meetingLink)}">${escapeHtml(meetingLink)}</a></p>` : ''}
+      ${meetingLink ? `<p><strong>Join via Google Meet:</strong> <a href="${escapeHtml(meetingLink)}">${escapeHtml(meetingLink)}</a></p>` : ''}
       ${googleEventId ? `<p><strong>Google event:</strong> ${escapeHtml(googleEventId)}</p>` : ''}
       ${bookingId ? `<p><strong>Booking ID:</strong> ${escapeHtml(String(bookingId))}</p>` : ''}
     </div>
