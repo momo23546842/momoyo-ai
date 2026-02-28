@@ -65,12 +65,13 @@ export async function POST(req: NextRequest) {
 
     const accessToken = await getAccessToken()
 
+    // Note: attendees removed to avoid 403 on free Google accounts
+    // The attendee's email is stored in the description instead
     const event = {
       summary: `Meeting with ${name}`,
-      description: `Email: ${email}\n${message ? `Message: ${message}` : ''}`,
+      description: `Booked by: ${name}\nEmail: ${email}${message ? `\nMessage: ${message}` : ''}`,
       start: { dateTime: start, timeZone: 'Australia/Sydney' },
       end: { dateTime: end, timeZone: 'Australia/Sydney' },
-      attendees: [{ email }],
     }
 
     const calRes = await fetch(
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       const errText = await calRes.text()
       console.error('Calendar insert error:', calRes.status, errText)
       return NextResponse.json(
-        { error: `Calendar error: ${calRes.status}` },
+        { error: `Calendar error ${calRes.status}: ${errText.slice(0, 300)}` },
         { status: 500 }
       )
     }
