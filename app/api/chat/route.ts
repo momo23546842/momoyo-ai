@@ -22,10 +22,41 @@ async function callGroq(message: string, systemPrompt: string) {
   return String(reply)
 }
 
+// Generate a simple session ID from headers
+function getSessionId(req: NextRequest): string {
+  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
+  const ua = req.headers.get('user-agent') || ''
+  // Simple hash to create a session-like ID
+  let hash = 0
+  const str = ip + ua
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return `session_${Math.abs(hash).toString(36)}`
+}
+
+async function saveConversation(sessionId: string, role: string, message: string, mode: string) {
+  try {
+    await prisma.conversation.create({
+      data: { sessionId, role, message, mode },
+    })
+  } catch (err) {
+    console.error('Failed to save conversation:', err)
+    // Don't fail the request if logging fails
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const message: string = body?.message || ''
+    const mode: string = body?.mode || 'chat'
+    const sessionId = getSessionId(req)
+
+    // Save user message
+    await saveConversation(sessionId, 'user', message, mode)
 
     const profile = await prisma?.profile?.findFirst?.() ?? null
     const resumes = await prisma?.resume?.findMany?.({ orderBy: { startDate: 'desc' } }) ?? []
@@ -50,16 +81,16 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You ARE Momoyo Kataoka. You speak as yourself in first person ("I", "my", "me"). You are friendly, warm, and professional. You use the factual data below about yourself to answer questions. If someone asks something not covered by the data, say you'd rather not share that or you're not sure.
 
-Keep responses concise and conversational — 2-3 sentences max unless more detail is needed. Don't start with "Hi, I'm Momoyo" every time — vary your responses naturally.
+Keep responses concise and conversational \u2014 2-3 sentences max unless more detail is needed. Don't start with "Hi, I'm Momoyo" every time \u2014 vary your responses naturally.
 
 ${parts.join('\n')}
 
 BOOKING INSTRUCTIONS:
 When someone wants to schedule a meeting, book an appointment, or mentions wanting to talk/meet/connect:
-1. Respond warmly in first person and include EXACTLY the tag [BOOKING_LINK] — it becomes a clickable button.
+1. Respond warmly in first person and include EXACTLY the tag [BOOKING_LINK] \u2014 it becomes a clickable button.
    Example: "I'd love to chat! Pick a date and time here. [BOOKING_LINK]"
 2. Available hours: Monday to Friday, 9:00-18:00 Sydney time.
-3. Be enthusiastic — you love meeting new people!`
+3. Be enthusiastic \u2014 you love meeting new people!`
 
     let replyText: string
     try {
@@ -69,6 +100,9 @@ When someone wants to schedule a meeting, book an appointment, or mentions wanti
       console.error('Groq call failed, falling back to local generator', e)
       replyText = generateReplyFromContext(message, parts.join('\n'))
     }
+
+    // Save assistant reply
+    await saveConversation(sessionId, 'assistant', replyText, mode)
 
     return NextResponse.json({ reply: replyText })
   } catch (err) {

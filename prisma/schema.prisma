@@ -37,7 +37,15 @@ model Conversation {
   sessionId String
   role      String
   message   String
-  mode      String
+  mode      String   // "chat" | "voice"
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  message   String
   createdAt DateTime @default(now())
 }
 
