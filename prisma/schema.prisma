@@ -6,11 +6,32 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Enums (new) ────────────────────────────────────────────
+
+enum ExperienceType {
+  INTERNSHIP
+  CONTRACT
+  EMPLOYMENT
+}
+
+enum ExperienceCategory {
+  IT
+  NUTRITION
+  EDU
+  OTHER
+}
+
+// ─── Existing tables (unchanged) ────────────────────────────
+
 model Profile {
   id          Int      @id @default(autoincrement())
   name        String
   bio         String
   catchphrase String?
+  // NEW – nullable so existing rows stay valid
+  summary     String?
+  focus       String?
+  vision      String?
   updatedAt   DateTime @updatedAt
 }
 
@@ -66,4 +87,49 @@ model AvailableHours {
   startTime String
   endTime   String
   isActive  Boolean @default(true)
+}
+
+// ─── New tables ─────────────────────────────────────────────
+
+model Experience {
+  id          Int                @id @default(autoincrement())
+  type        ExperienceType
+  category    ExperienceCategory
+  title       String
+  org         String
+  startDate   DateTime
+  endDate     DateTime?
+  description String?
+  highlights  String[]           // bullet-point achievements
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  techStack ExperienceTech[]
+}
+
+model TechStack {
+  id   Int    @id @default(autoincrement())
+  name String @unique // e.g. "Next.js", "Prisma", "MCP"
+
+  experiences ExperienceTech[]
+}
+
+model ExperienceTech {
+  experienceId Int
+  techId       Int
+
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  tech       TechStack  @relation(fields: [techId], references: [id], onDelete: Cascade)
+
+  @@id([experienceId, techId])
+}
+
+model InterviewQA {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String
+  category  String?  // e.g. "behavioural", "technical", "personal"
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 }
