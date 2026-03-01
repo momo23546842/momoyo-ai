@@ -25,7 +25,7 @@ export function AiAssistant() {
     {
       id: "welcome",
       role: "assistant",
-      content: 'Hi! I\'m Momoyo\'s AI assistant. Ask me anything or say "Book March 10" to schedule a meeting!',
+      content: "Hi! I'm Momoyo's AI assistant. Ask me anything or say \"Book March 10\" to schedule a meeting!",
     },
   ])
   const [isCallActive, setIsCallActive] = useState(false)
@@ -44,7 +44,6 @@ export function AiAssistant() {
   const isSpeakingRef = useRef(false)
   const callTimerRef = useRef<any>(null)
 
-  // Listen for tab switch events from header
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
@@ -61,7 +60,6 @@ export function AiAssistant() {
   useEffect(() => { isCallActiveRef.current = isCallActive }, [isCallActive])
   useEffect(() => { isSpeakingRef.current = isSpeaking }, [isSpeaking])
 
-  // Call timer
   useEffect(() => {
     if (isCallActive) {
       setCallDuration(0)
@@ -78,7 +76,6 @@ export function AiAssistant() {
     return `${m}:${String(sec).padStart(2, '0')}`
   }
 
-  // ---- Date parsing ----
   const parseDate = (text: string): string | null => {
     const now = new Date()
     const year = now.getFullYear()
@@ -173,7 +170,7 @@ export function AiAssistant() {
     setInput("")
     const date = parseDate(text)
     if (date && (isBookingOrAvailabilityIntent(text) || hasDateWithQuestion(text))) { await showSlotsForDate(date); return }
-    if (isBookingOrAvailabilityIntent(text)) { setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:'What date? (e.g. "March 10", "next Tuesday", "3\u670810\u65e5")' }]); return }
+    if (isBookingOrAvailabilityIntent(text)) { setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:"What date? (e.g. \"March 10\", \"next Tuesday\", \"3\u670810\u65e5\")" }]); return }
     if (date) {
       const lastMsg = messages[messages.length - 1]
       if (lastMsg?.role === "assistant" && (lastMsg.content.includes("What date") || lastMsg.content.includes("another date"))) { await showSlotsForDate(date); return }
@@ -227,7 +224,6 @@ export function AiAssistant() {
     return <span>{msg.content}</span>
   }
 
-  // ---- Voice ----
   const stopSpeaking = () => { window.speechSynthesis?.cancel(); setIsSpeaking(false); isSpeakingRef.current = false }
 
   const speak = (text: string, onEnd?: () => void) => {
@@ -329,6 +325,8 @@ export function AiAssistant() {
     setIsListening(false); setCallStatus("")
   }
 
+  const chatPlaceholder = "What times are free on March 10?"
+
   return (
     <section id="assistant" className="relative px-6 py-12">
       <div className="pointer-events-none absolute inset-0 bg-card/40" />
@@ -336,7 +334,7 @@ export function AiAssistant() {
         <p className="mb-2 text-sm font-medium uppercase tracking-widest text-primary">AI Assistant</p>
         <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">Ask Me Anything</h2>
         <p className="mb-10 max-w-2xl leading-relaxed text-muted-foreground">
-          Chat or talk with Momoyo's AI \u2014 ask about her, or book a meeting directly.
+          Chat or talk with Momoyo&apos;s AI &mdash; ask about her, or book a meeting directly.
         </p>
 
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-foreground/[0.03]">
@@ -349,7 +347,6 @@ export function AiAssistant() {
             </button>
           </div>
 
-          {/* ===== CHAT TAB ===== */}
           {tab === "chat" && (
             <div className="flex flex-col">
               <div ref={scrollRef} className="h-96 overflow-y-auto px-6 py-6">
@@ -365,7 +362,7 @@ export function AiAssistant() {
               </div>
               <div className="border-t border-border bg-background/50 px-6 py-4">
                 <form onSubmit={e => { e.preventDefault(); handleSend() }} className="flex items-center gap-3">
-                  <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder='Try: "What\'s free on March 10?"' className="flex-1 rounded-xl border border-border bg-card px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                  <input type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={chatPlaceholder} className="flex-1 rounded-xl border border-border bg-card px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                   <button type="submit" disabled={!input.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20 transition-colors hover:brightness-110 disabled:opacity-40">
                     <Send className="h-4 w-4" />
                   </button>
@@ -374,25 +371,21 @@ export function AiAssistant() {
             </div>
           )}
 
-          {/* ===== CALL TAB — LINE/WhatsApp style ===== */}
           {tab === "call" && (
             <div className="flex flex-col items-center justify-center py-10 gap-4" style={{ minHeight: '420px', background: isCallActive ? 'linear-gradient(180deg, oklch(0.22 0.02 155) 0%, oklch(0.16 0.015 160) 100%)' : undefined }}>
 
               {!isCallActive ? (
-                /* ---- Idle: pre-call screen ---- */
                 <div className="flex flex-col items-center gap-8 text-center py-8">
-                  {/* Avatar */}
                   <div className="relative">
                     <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-accent/20 shadow-lg">
                       <User className="h-14 w-14 text-primary" />
                     </div>
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-foreground">Momoyo's AI</h4>
-                    <p className="text-sm text-muted-foreground mt-1">Voice assistant \u00b7 Ask anything or book a meeting</p>
+                    <h4 className="text-lg font-semibold text-foreground">Momoyo&apos;s AI</h4>
+                    <p className="text-sm text-muted-foreground mt-1">Voice assistant &middot; Ask anything or book a meeting</p>
                     {callError && <p className="text-xs text-destructive mt-2">{callError}</p>}
                   </div>
-                  {/* Big green call button */}
                   <button onClick={startCall}
                     className="flex h-16 w-16 items-center justify-center rounded-full shadow-lg shadow-[oklch(0.55_0.12_150/0.3)] transition-transform hover:scale-110 active:scale-95"
                     style={{ background: 'oklch(0.55 0.12 150)' }}>
@@ -401,9 +394,7 @@ export function AiAssistant() {
                   <p className="text-xs text-muted-foreground">Best in Chrome</p>
                 </div>
               ) : (
-                /* ---- Active call: phone UI ---- */
                 <div className="flex flex-col items-center gap-5 text-center w-full px-6">
-                  {/* Avatar with pulse */}
                   <div className="relative">
                     {(isListening || isSpeaking) && (
                       <>
@@ -417,13 +408,12 @@ export function AiAssistant() {
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-semibold text-white">Momoyo's AI</h4>
+                    <h4 className="text-lg font-semibold text-white">Momoyo&apos;s AI</h4>
                     <p className="text-sm text-white/60 mt-0.5">
                       {isListening ? "Listening..." : isSpeaking ? "Speaking..." : callStatus || formatDuration(callDuration)}
                     </p>
                   </div>
 
-                  {/* Conversation log */}
                   {messages.length > 1 && (
                     <div className="w-full max-h-32 overflow-y-auto rounded-xl bg-white/5 backdrop-blur-sm px-4 py-3">
                       {messages.slice(-4).map(msg => (
@@ -435,9 +425,7 @@ export function AiAssistant() {
                     </div>
                   )}
 
-                  {/* Call controls */}
                   <div className="flex items-center gap-6 mt-4">
-                    {/* Mute / Speak button */}
                     <button onClick={startListening}
                       className={`flex h-14 w-14 items-center justify-center rounded-full transition-all ${
                         isListening
@@ -447,13 +435,11 @@ export function AiAssistant() {
                       {isListening ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
                     </button>
 
-                    {/* End call — red */}
                     <button onClick={endCall}
                       className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30 transition-transform hover:scale-105 active:scale-95">
                       <PhoneOff className="h-7 w-7 rotate-[135deg]" />
                     </button>
 
-                    {/* Interrupt (stop AI speaking) */}
                     <button onClick={stopSpeaking}
                       disabled={!isSpeaking}
                       className={`flex h-14 w-14 items-center justify-center rounded-full transition-all ${
@@ -465,7 +451,7 @@ export function AiAssistant() {
                     </button>
                   </div>
                   <p className="text-[10px] text-white/30 mt-1">
-                    {isSpeaking ? "Tap 💬 to interrupt" : isListening ? "Listening..." : "Tap 🎤 to speak"}
+                    {isSpeaking ? "Tap chat icon to interrupt" : isListening ? "Listening..." : "Tap mic to speak"}
                   </p>
                 </div>
               )}
