@@ -18,15 +18,13 @@ export function Hero() {
         {/* Text */}
         <div className="flex-1 text-center md:text-left">
           <p className="mb-4 text-sm font-medium uppercase tracking-widest text-primary">
-            Full-Stack Developer & Dietitian
+            Full-Stack Developer &amp; Dietitian
           </p>
           <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-foreground md:text-7xl">
             <span className="text-balance">Momoyo Kataoka</span>
           </h1>
           <p className="mx-auto mb-10 max-w-xl text-lg leading-relaxed text-muted-foreground md:mx-0">
-            IT student completing a Diploma of IT, based in Sydney. Building
-            thoughtful digital experiences at the intersection of technology and
-            health.
+            Aspiring to design digital experiences that connect health and technology.
           </p>
           <a
             href="#contact"
