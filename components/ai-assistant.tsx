@@ -25,7 +25,7 @@ export function AiAssistant() {
     {
       id: "welcome",
       role: "assistant",
-      content: "Hi! I'm Momoyo's AI assistant. Ask me anything or say \"Book March 10\" to schedule a meeting!",
+      content: "Hey! I'm Momoyo. Ask me anything about my work, skills, or career. You can also book a meeting with me \u2014 just say a date!",
     },
   ])
   const [isCallActive, setIsCallActive] = useState(false)
@@ -131,7 +131,7 @@ export function AiAssistant() {
     setBookingSlot(slot); setBookingDate(date)
     setMessages(prev => [...prev,
       { id: Date.now().toString(), role: "user", content: slot.label },
-      { id: (Date.now()+1).toString(), role: "assistant", content: `${date} ${slot.label} \u2014 enter your details:`, type: "booking-form", meta: { slot, date } },
+      { id: (Date.now()+1).toString(), role: "assistant", content: `Great, ${date} at ${slot.label}! Just fill in your details below:`, type: "booking-form", meta: { slot, date } },
     ])
   }
 
@@ -144,21 +144,21 @@ export function AiAssistant() {
         body: JSON.stringify({ name:bookingForm.name, email:bookingForm.email, message:bookingForm.message, start:bookingSlot.start, end:bookingSlot.end }),
       })
       if (!res.ok) throw new Error('fail')
-      setMessages(prev => [...prev, { id: Date.now().toString(), role:"assistant", content:`Booked! \u2713 ${bookingDate} ${bookingSlot.label} (Sydney)`, type:"booking-confirmed" }])
+      setMessages(prev => [...prev, { id: Date.now().toString(), role:"assistant", content:`Booked! \u2713 ${bookingDate} ${bookingSlot.label} (Sydney). Looking forward to it!`, type:"booking-confirmed" }])
       setBookingSlot(null); setBookingDate(null); setBookingForm({ name:"", email:"", message:"" })
     } catch {
-      setMessages(prev => [...prev, { id: Date.now().toString(), role:"assistant", content:"Booking failed. Please try again." }])
+      setMessages(prev => [...prev, { id: Date.now().toString(), role:"assistant", content:"Sorry, the booking didn't go through. Please try again!" }])
     } finally { setIsBooking(false) }
   }
 
   const showSlotsForDate = async (date: string) => {
     const loadingId = (Date.now()+1).toString()
-    setMessages(prev => [...prev, { id:loadingId, role:"assistant", content:`Checking ${date}...` }])
+    setMessages(prev => [...prev, { id:loadingId, role:"assistant", content:`Let me check ${date}...` }])
     const slots = await fetchSlots(date)
     setMessages(prev => {
       const filtered = prev.filter(m => m.id !== loadingId)
-      if (slots.length === 0) return [...filtered, { id:(Date.now()+2).toString(), role:"assistant", content:`No slots for ${date}. Try another date!` }]
-      return [...filtered, { id:(Date.now()+2).toString(), role:"assistant", content:`Available on ${date}:`, type:"slots", meta:{slots,date} }]
+      if (slots.length === 0) return [...filtered, { id:(Date.now()+2).toString(), role:"assistant", content:`Hmm, nothing available on ${date}. Try another date?` }]
+      return [...filtered, { id:(Date.now()+2).toString(), role:"assistant", content:`Here are my available times on ${date}:`, type:"slots", meta:{slots,date} }]
     })
     return slots
   }
@@ -170,7 +170,7 @@ export function AiAssistant() {
     setInput("")
     const date = parseDate(text)
     if (date && (isBookingOrAvailabilityIntent(text) || hasDateWithQuestion(text))) { await showSlotsForDate(date); return }
-    if (isBookingOrAvailabilityIntent(text)) { setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:"What date? (e.g. \"March 10\", \"next Tuesday\", \"3\u670810\u65e5\")" }]); return }
+    if (isBookingOrAvailabilityIntent(text)) { setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:"I'd love to meet! What date works for you? (e.g. \"March 10\", \"next Tuesday\")" }]); return }
     if (date) {
       const lastMsg = messages[messages.length - 1]
       if (lastMsg?.role === "assistant" && (lastMsg.content.includes("What date") || lastMsg.content.includes("another date"))) { await showSlotsForDate(date); return }
@@ -180,7 +180,7 @@ export function AiAssistant() {
       const data = await res.json()
       setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:data.reply }])
     } catch {
-      setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:"Sorry, couldn't reach the assistant." }])
+      setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:"Oops, something went wrong. Please try again!" }])
     }
   }
 
@@ -258,21 +258,21 @@ export function AiAssistant() {
         const slots = await fetchSlots(date)
         if (slots.length > 0) {
           const top = slots.slice(0,4).map(s => s.label.split(' - ')[0]).join(', ')
-          const reply = `${slots.length} slots on ${date}: ${top}. Check chat to pick.`
+          const reply = `I have ${slots.length} slots on ${date}: ${top}. Check the chat to pick one!`
           setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:reply }])
           speak(reply, () => {
             setTab("chat")
-            setMessages(prev => [...prev, { id:(Date.now()+2).toString(), role:"assistant", content:`Available on ${date}:`, type:"slots", meta:{slots,date} }])
+            setMessages(prev => [...prev, { id:(Date.now()+2).toString(), role:"assistant", content:`Here are my times on ${date}:`, type:"slots", meta:{slots,date} }])
           })
         } else {
-          const reply = `No slots on ${date}. Try another date.`
+          const reply = `Nothing available on ${date}. Try another date?`
           setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:reply }])
           speak(reply, () => { if (isCallActiveRef.current) { setCallStatus(""); startListening() } })
         }
         return
       }
       if (isBookingOrAvailabilityIntent(transcript)) {
-        const reply = "What date?"
+        const reply = "Sure! What date works for you?"
         setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:reply }])
         speak(reply, () => { if (isCallActiveRef.current) { setCallStatus(""); startListening() } })
         return
@@ -282,14 +282,14 @@ export function AiAssistant() {
         const slots = await fetchSlots(date)
         if (slots.length > 0) {
           const top = slots.slice(0,4).map(s => s.label.split(' - ')[0]).join(', ')
-          const reply = `${slots.length} slots: ${top}. See chat.`
+          const reply = `${slots.length} slots: ${top}. See chat to pick.`
           setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:reply }])
           speak(reply, () => {
             setTab("chat")
-            setMessages(prev => [...prev, { id:(Date.now()+2).toString(), role:"assistant", content:`Available on ${date}:`, type:"slots", meta:{slots,date} }])
+            setMessages(prev => [...prev, { id:(Date.now()+2).toString(), role:"assistant", content:`My times on ${date}:`, type:"slots", meta:{slots,date} }])
           })
         } else {
-          const reply = `Nothing on ${date}. Another date?`
+          const reply = `Hmm, nothing on ${date}. Another date?`
           setMessages(prev => [...prev, { id:(Date.now()+1).toString(), role:"assistant", content:reply }])
           speak(reply, () => { if (isCallActiveRef.current) { setCallStatus(""); startListening() } })
         }
@@ -316,7 +316,7 @@ export function AiAssistant() {
 
   const startCall = () => {
     setIsCallActive(true); isCallActiveRef.current = true; setCallError(null); setCallStatus("")
-    speak("Hi! Ask me anything or say a date to book.", () => { setCallStatus(""); startListening() })
+    speak("Hey! I'm Momoyo. What can I help you with?", () => { setCallStatus(""); startListening() })
   }
 
   const endCall = () => {
@@ -325,16 +325,16 @@ export function AiAssistant() {
     setIsListening(false); setCallStatus("")
   }
 
-  const chatPlaceholder = "What times are free on March 10?"
+  const chatPlaceholder = "Ask me anything or say a date to book!"
 
   return (
     <section id="assistant" className="relative px-6 py-12">
       <div className="pointer-events-none absolute inset-0 bg-card/40" />
       <div className="relative mx-auto max-w-4xl">
-        <p className="mb-2 text-sm font-medium uppercase tracking-widest text-primary">AI Assistant</p>
-        <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">Ask Me Anything</h2>
+        <p className="mb-2 text-sm font-medium uppercase tracking-widest text-primary">Talk to Momoyo</p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">Chat with Me</h2>
         <p className="mb-10 max-w-2xl leading-relaxed text-muted-foreground">
-          Chat or talk with Momoyo&apos;s AI &mdash; ask about her, or book a meeting directly.
+          Ask about my work, skills, or career. You can also book a meeting directly!
         </p>
 
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-foreground/[0.03]">
@@ -382,8 +382,8 @@ export function AiAssistant() {
                     </div>
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-foreground">Momoyo&apos;s AI</h4>
-                    <p className="text-sm text-muted-foreground mt-1">Voice assistant &middot; Ask anything or book a meeting</p>
+                    <h4 className="text-lg font-semibold text-foreground">Momoyo</h4>
+                    <p className="text-sm text-muted-foreground mt-1">Voice call &middot; Ask anything or book a meeting</p>
                     {callError && <p className="text-xs text-destructive mt-2">{callError}</p>}
                   </div>
                   <button onClick={startCall}
@@ -408,7 +408,7 @@ export function AiAssistant() {
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-semibold text-white">Momoyo&apos;s AI</h4>
+                    <h4 className="text-lg font-semibold text-white">Momoyo</h4>
                     <p className="text-sm text-white/60 mt-0.5">
                       {isListening ? "Listening..." : isSpeaking ? "Speaking..." : callStatus || formatDuration(callDuration)}
                     </p>
